@@ -10,8 +10,6 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 version = "2024.03"
 
 project {
-    id("K8sTest")
-    name = "K8sTest"
     description = "MSA 주문 시스템 CI/CD 파이프라인 (RKE2 + Kubernetes Cloud Profile)"
 
     params {
@@ -30,7 +28,7 @@ project {
 }
 
 object RunUnitTests : BuildType({
-    id("K8sTest_RunUnitTests")
+    id("RunUnitTests")
     name = "1. Run Tests (Frontend & Services)"
     description = "각 마이크로서비스 단위 테스트 및 프론트엔드 빌드 검증"
 
@@ -85,7 +83,7 @@ object RunUnitTests : BuildType({
 })
 
 object BuildAndPushImages : BuildType({
-    id("K8sTest_BuildAndPushImages")
+    id("BuildAndPushImages")
     name = "2. Build & Push Container Images (Kaniko)"
     description = "containerd 노드 환경에서 Kaniko를 이용한 비특권 도커 이미지 빌드 및 원격 레지스트리 푸시"
 
@@ -141,7 +139,7 @@ object BuildAndPushImages : BuildType({
 })
 
 object DeployAndVerify : BuildType({
-    id("K8sTest_DeployAndVerify")
+    id("DeployAndVerify")
     name = "3. Deploy & Verify Rollout"
     description = "쿠버네티스(RKE2) 클러스터에 최신 이미지 롤아웃 및 상태 검증"
 
