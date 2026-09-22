@@ -1,0 +1,96 @@
+services:
+  # 1. PostgreSQL 데이터베이스 (주문 서비스 전용)
+  postgres:
+    image: postgres:16-alpine
+    container_name: msa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-msa_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-msa_secure_password_123}
+      POSTGRES_DB: ${POSTGRES_DB:-orders_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-msa_user} -d ${POSTGRES_DB:-orders_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - msa-network
+
+  # 2. 상품 마이크로서비스 (FastAPI)
+  product-service:
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    container_name: msa-product-service
+    restart: unless-stopped
+    ports:
+      - "${PRODUCT_SERVICE_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - msa-network
+
+  # 3. 주문 마이크로서비스 (FastAPI + PostgreSQL)
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: msa-order-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-msa_user}:${POSTGRES_PASSWORD:-msa_secure_password_123}@postgres:5432/${POSTGRES_DB:-orders_db}
+      PRODUCT_SERVICE_URL: http://product-service:8000
+    ports:
+      - "${ORDER_SERVICE_PORT:-8002}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - msa-network
+
+  # 4. 프론트엔드 웹 UI (React + Vite + Nginx Proxy)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: msa-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - msa-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  msa-network:
+    driver: bridge

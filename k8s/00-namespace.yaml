@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: msa-demo
+  labels:
+    app.kubernetes.io/name: msa-demo
+    app.kubernetes.io/part-of: msa-order-system
