@@ -57,10 +57,12 @@ object RunUnitTests : BuildType({
             scriptContent = """
                 #!/bin/bash
                 set -e
-                echo "=== Product Service 테스트 실행 ==="
+                echo "=== Product Service 가상환경 구성 및 테스트 실행 ==="
                 cd product-service
-                python3 -m pip install -r requirements.txt
-                python3 -m pytest -v
+                python3 -m venv .venv
+                source .venv/bin/activate
+                pip install -r requirements.txt
+                pytest -v
             """.trimIndent()
         }
 
@@ -69,10 +71,12 @@ object RunUnitTests : BuildType({
             scriptContent = """
                 #!/bin/bash
                 set -e
-                echo "=== Order Service 테스트 실행 ==="
+                echo "=== Order Service 가상환경 구성 및 테스트 실행 ==="
                 cd order-service
-                python3 -m pip install -r requirements.txt
-                python3 -m pytest -v
+                python3 -m venv .venv
+                source .venv/bin/activate
+                pip install -r requirements.txt
+                pytest -v
             """.trimIndent()
         }
 
@@ -81,9 +85,22 @@ object RunUnitTests : BuildType({
             scriptContent = """
                 #!/bin/bash
                 set -e
+                echo "=== Node.js 바이너리 환경 구성 ==="
+                NODE_VERSION="v20.18.0"
+                NODE_DIR="/tmp/node-${'$'}{NODE_VERSION}-linux-x64"
+
+                if [ ! -d "${'$'}NODE_DIR" ]; then
+                    echo "Node.js ${'$'}{NODE_VERSION} 다운로드 중..."
+                    curl -fsSL "https://nodejs.org/dist/${'$'}{NODE_VERSION}/node-${'$'}{NODE_VERSION}-linux-x64.tar.xz" | tar -xJ -C /tmp
+                fi
+
+                export PATH="${'$'}NODE_DIR/bin:${'$'}PATH"
+                echo "Node version: ${'$'}(node -v)"
+                echo "NPM version: ${'$'}(npm -v)"
+
                 echo "=== Frontend 테스트 및 프로덕션 빌드 검증 ==="
                 cd frontend
-                npm install
+                npm ci || npm install
                 npm test
                 npm run build
             """.trimIndent()
