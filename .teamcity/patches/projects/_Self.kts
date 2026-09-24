@@ -12,6 +12,21 @@ To apply the patch, change the root project
 accordingly, and delete the patch script.
 */
 changeProject(DslContext.projectId) {
+    params {
+        expect {
+            param("env.IMAGE_REGISTRY", "15.165.77.105:30002/msa-demo")
+        }
+        update {
+            param("env.IMAGE_REGISTRY", "3.38.251.60:30002/msa-demo")
+        }
+        expect {
+            password("env.REGISTRY_PASSWORD", "HarborPassword123!", label = "Container Registry Password", display = ParameterDisplay.HIDDEN)
+        }
+        update {
+            password("env.REGISTRY_PASSWORD", "credentialsJSON:9990d8e9-c386-42fb-9bd6-e261f44bf0dd", label = "Container Registry Password", display = ParameterDisplay.HIDDEN)
+        }
+    }
+
     features {
         add {
             kubernetesConnection {
