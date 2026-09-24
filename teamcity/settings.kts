@@ -187,9 +187,19 @@ EOF
                     kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
                     kubectl logs -n teamcity "${'$'}POD_NAME" -f
                     
+                    echo "${'$'}POD_NAME 완료 대기 중..."
+                    while true; do
+                        PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                        if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                            break
+                        fi
+                        sleep 1
+                    done
+                    
                     STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
                     if [ "${'$'}STATUS" != "Succeeded" ]; then
                         echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                        kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
                         exit 1
                     fi
                     echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
