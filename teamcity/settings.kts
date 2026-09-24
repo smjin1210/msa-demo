@@ -13,7 +13,7 @@ project {
     description = "MSA 주문 시스템 CI/CD 파이프라인 (RKE2 + Kubernetes Cloud Profile)"
 
     params {
-        param("env.IMAGE_REGISTRY", "15.165.77.105:30002/msa-demo")
+        param("env.IMAGE_REGISTRY", "3.38.251.60:30002/msa-demo")
         param("env.IMAGE_TAG", "%build.number%")
         param("env.K8S_NAMESPACE", "msa-demo")
         password("env.REGISTRY_PASSWORD", "HarborPassword123!", display = ParameterDisplay.HIDDEN, label = "Container Registry Password")
