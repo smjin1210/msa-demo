@@ -216,6 +216,10 @@ object DeployAndVerify : BuildType({
     name = "3. Deploy & Verify Rollout"
     description = "쿠버네티스(RKE2) 클러스터에 최신 이미지 롤아웃 및 상태 검증"
 
+    vcs {
+        root(MsaDemoVcs)
+    }
+
     dependencies {
         snapshot(BuildAndPushImages) {
             onDependencyFailure = FailureAction.FAIL_TO_START
@@ -232,6 +236,9 @@ object DeployAndVerify : BuildType({
                 NAMESPACE="%env.K8S_NAMESPACE%"
                 REGISTRY="%env.IMAGE_REGISTRY%"
                 TAG="%env.IMAGE_TAG%"
+                if [ -z "${'$'}TAG" ]; then
+                    TAG="latest"
+                fi
                 
                 # 1. kubectl 환경 확인
                 if ! command -v kubectl &> /dev/null; then
@@ -240,6 +247,13 @@ object DeployAndVerify : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
+                # 2. k8s 매니페스트 디렉터리 존재 여부 확인 및 보완
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    git clone https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
                 echo "=== 1. 네임스페이스 및 기본 리소스 배포 ==="
                 kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
                 kubectl apply -f k8s/02-postgres.yaml
@@ -251,6 +265,7 @@ object DeployAndVerify : BuildType({
                 kubectl set image deployment/product-service product-service="${'$'}REGISTRY/product-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
                 kubectl set image deployment/order-service order-service="${'$'}REGISTRY/order-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
                 kubectl set image deployment/frontend frontend="${'$'}REGISTRY/frontend:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/product-service deployment/order-service deployment/frontend -n "${'$'}NAMESPACE"
 
                 echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
                 kubectl rollout status deployment/product-service -n "${'$'}NAMESPACE" --timeout=180s
