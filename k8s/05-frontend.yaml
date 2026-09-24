@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 3.38.251.60:30002/msa-demo/frontend:latest
+          image: 13.124.192.6:30002/msa-demo/frontend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

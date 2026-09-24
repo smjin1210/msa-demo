@@ -28,8 +28,8 @@
 ## 2. Kubernetes Cloud Profile 및 Build Agent 설정
 
 ### Agent 최대 수량
-- 설정 요구사항에 따라 **최대 2개**의 에이전트 인스턴스로 동시 실행을 제한합니다.
-- TeamCity의 Cloud Profile 설정에서 `Max number of instances: 2`로 구성합니다.
+- TeamCity 무료 라이선스(Professional) 기준 **최대 3개**의 에이전트 인스턴스로 동시 실행을 제한합니다.
+- TeamCity의 Cloud Profile 설정에서 `Max number of instances: 3`으로 구성합니다.
 
 ### containerd 환경을 위한 Agent Pod Template (Kaniko 지원)
 Kubernetes Cloud Profile에서 사용할 Pod 템플릿 예시:

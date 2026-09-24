@@ -145,7 +145,7 @@ kubectl get all,pvc -n msa-demo
 
 ## 5. TeamCity CI/CD 파이프라인 설계 (Project: K8sTest)
 
-TeamCity에서 **Kubernetes Cloud Profile**을 활용하여 최대 2개의 에이전트 환경에서 동작하도록 파이프라인이 설계되었습니다.
+TeamCity에서 **Kubernetes Cloud Profile**을 활용하여 무료 라이선스 기준 최대 3개의 에이전트 환경에서 동작하도록 파이프라인이 설계되었습니다.
 
 ### 5.1 파이프라인 단계 구조
 1. **Stage 1: Run Tests** (`K8sTest_RunUnitTests`)
