@@ -16,7 +16,7 @@ project {
         param("env.IMAGE_REGISTRY", "3.38.251.60:30002/msa-demo")
         param("env.IMAGE_TAG", "%build.number%")
         param("env.K8S_NAMESPACE", "msa-demo")
-        password("env.REGISTRY_PASSWORD", "HarborPassword123!", display = ParameterDisplay.HIDDEN, label = "Container Registry Password")
+        password("env.REGISTRY_PASSWORD", "tangun123!", display = ParameterDisplay.HIDDEN, label = "Container Registry Password")
         param("env.REGISTRY_USER", "admin")
     }
 
