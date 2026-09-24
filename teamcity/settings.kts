@@ -217,7 +217,7 @@ object DeployAndVerify : BuildType({
     description = "쿠버네티스(RKE2) 클러스터에 최신 이미지 롤아웃 및 상태 검증"
 
     vcs {
-        root(MsaDemoVcs)
+        root(DslContext.settingsRoot)
     }
 
     dependencies {
