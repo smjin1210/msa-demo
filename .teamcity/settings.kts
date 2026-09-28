@@ -35,7 +35,7 @@ object TestProductService : BuildType({
     description = "Product Service (FastAPI) 단위 테스트"
 
     vcs {
-        root(DslContext.settingsRoot, "+:product-service/**")
+        root(DslContext.settingsRoot, "+:product-service")
     }
 
     triggers {
@@ -76,7 +76,7 @@ object TestOrderService : BuildType({
     description = "Order Service (FastAPI + SQLite Test DB) 단위 테스트"
 
     vcs {
-        root(DslContext.settingsRoot, "+:order-service/**")
+        root(DslContext.settingsRoot, "+:order-service")
     }
 
     triggers {
@@ -117,7 +117,7 @@ object TestFrontend : BuildType({
     description = "Frontend (React + Vite) 단위 테스트 및 프로덕션 번들 검증"
 
     vcs {
-        root(DslContext.settingsRoot, "+:frontend/**")
+        root(DslContext.settingsRoot, "+:frontend")
     }
 
     triggers {
