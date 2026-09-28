@@ -53,141 +53,6 @@ project {
 }
 
 // ==============================================================================
-// 헬퍼 함수: Kaniko 이미지 빌드 및 푸시 스크립트 생성
-// ==============================================================================
-fun kanikoBuildScript(svc: String): String = """
-    #!/bin/bash
-    set -e
-    
-    REGISTRY="%env.IMAGE_REGISTRY%"
-    TAG="%env.IMAGE_TAG%"
-    REG_USER="%env.REGISTRY_USER%"
-    REG_PASS="%env.REGISTRY_PASSWORD%"
-    
-    echo "=================================================="
-    echo "Kaniko Pod를 통한 $svc 컨테이너 빌드 및 푸시 시작"
-    echo "=================================================="
-    echo "대상 레지스트리: ${'$'}REGISTRY"
-    echo "이미지 태그: ${'$'}TAG"
-    
-    # 1. kubectl 환경 확인 및 준비
-    if ! command -v kubectl &> /dev/null; then
-        echo "kubectl 다운로드 중..."
-        curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
-        chmod +x /tmp/kubectl
-        export PATH="/tmp:${'$'}PATH"
-    fi
-    echo "kubectl 준비 완료"
-
-    # 2. Harbor 인증 시크릿 갱신
-    REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
-    kubectl create secret docker-registry harbor-creds -n teamcity \
-      --docker-server="${'$'}REG_HOST" \
-      --docker-username="${'$'}REG_USER" \
-      --docker-password="${'$'}REG_PASS" \
-      --dry-run=client -o yaml | kubectl apply -f -
-
-    # 3. 단일 서비스 전용 Kaniko 파드 빌드 실행
-    POD_NAME="kaniko-build-$svc-%build.number%"
-    kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
-    
-    cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: ${'$'}POD_NAME
-  namespace: teamcity
-spec:
-  restartPolicy: Never
-  containers:
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:v1.23.2-debug
-    args:
-    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
-    - --context-sub-path=$svc
-    - --destination=${'$'}REGISTRY/$svc:${'$'}TAG
-    - --destination=${'$'}REGISTRY/$svc:latest
-    - --cache=true
-    - --insecure
-    - --skip-tls-verify
-    volumeMounts:
-    - name: creds
-      mountPath: /kaniko/.docker/
-  volumes:
-  - name: creds
-    secret:
-      secretName: harbor-creds
-      items:
-      - key: .dockerconfigjson
-        path: config.json
-EOF
-
-    echo "${'$'}POD_NAME 기동 대기 중..."
-    kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
-    kubectl logs -n teamcity "${'$'}POD_NAME" -f
-    
-    echo "${'$'}POD_NAME 완료 대기 중..."
-    while true; do
-        PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
-        if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
-            break
-        fi
-        sleep 1
-    done
-    
-    STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
-    if [ "${'$'}STATUS" != "Succeeded" ]; then
-        echo "ERROR: $svc 빌드 실패 (상태: ${'$'}STATUS)"
-        kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
-        exit 1
-    fi
-    echo "$svc 이미지 빌드 및 푸시 성공!"
-    kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
-""".trimIndent()
-
-// ==============================================================================
-// 헬퍼 함수: 단일 서비스 롤링 배포 및 검증 스크립트 생성
-// ==============================================================================
-fun deployScript(svc: String, yamlFile: String): String = """
-    #!/bin/bash
-    set -e
-    
-    NAMESPACE="%env.K8S_NAMESPACE%"
-    REGISTRY="%env.IMAGE_REGISTRY%"
-    TAG="latest"
-    
-    # 1. kubectl 환경 확인
-    if ! command -v kubectl &> /dev/null; then
-        curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
-        chmod +x /tmp/kubectl
-        export PATH="/tmp:${'$'}PATH"
-    fi
-    
-    # 2. k8s 매니페스트 디렉터리 존재 여부 확인 및 보완
-    if [ ! -d "k8s" ]; then
-        echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
-        rm -rf /tmp/msa-demo-repo
-        git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
-        cd /tmp/msa-demo-repo
-    fi
-
-    echo "=== 1. 네임스페이스 및 $svc 리소스 배포 ==="
-    kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-    kubectl apply -f k8s/02-postgres.yaml
-    kubectl apply -f k8s/$yamlFile
-
-    echo "=== 2. $svc 신규 이미지 롤아웃 트리거 ==="
-    kubectl set image deployment/$svc $svc="${'$'}REGISTRY/$svc:${'$'}TAG" -n "${'$'}NAMESPACE" || true
-    kubectl rollout restart deployment/$svc -n "${'$'}NAMESPACE"
-
-    echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
-    kubectl rollout status deployment/$svc -n "${'$'}NAMESPACE" --timeout=180s
-
-    echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
-    kubectl get pods -n "${'$'}NAMESPACE" -l app=$svc -o wide
-""".trimIndent()
-
-// ==============================================================================
 // 0. 마스터 통합 배포 파이프라인 (Composite Build)
 // ==============================================================================
 object DeployAll : BuildType({
@@ -403,7 +268,84 @@ object BuildProductService : BuildType({
     steps {
         script {
             name = "Build & Push Product Service via Kaniko"
-            scriptContent = kanikoBuildScript("product-service")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="%env.IMAGE_TAG%"
+                REG_USER="%env.REGISTRY_USER%"
+                REG_PASS="%env.REGISTRY_PASSWORD%"
+                SVC="product-service"
+                
+                echo "=== Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작 ==="
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+
+                REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
+                kubectl create secret docker-registry harbor-creds -n teamcity \
+                  --docker-server="${'$'}REG_HOST" \
+                  --docker-username="${'$'}REG_USER" \
+                  --docker-password="${'$'}REG_PASS" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                POD_NAME="kaniko-build-${'$'}SVC-%build.number%"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+                
+                cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${'$'}POD_NAME
+  namespace: teamcity
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    args:
+    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
+    - --context-sub-path=${'$'}SVC
+    - --destination=${'$'}REGISTRY/${'$'}SVC:${'$'}TAG
+    - --destination=${'$'}REGISTRY/${'$'}SVC:latest
+    - --cache=true
+    - --insecure
+    - --skip-tls-verify
+    volumeMounts:
+    - name: creds
+      mountPath: /kaniko/.docker/
+  volumes:
+  - name: creds
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+EOF
+
+                kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
+                kubectl logs -n teamcity "${'$'}POD_NAME" -f
+                
+                while true; do
+                    PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                    if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
+                if [ "${'$'}STATUS" != "Succeeded" ]; then
+                    echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                    kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
+                    exit 1
+                fi
+                echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+            """.trimIndent()
         }
     }
 })
@@ -426,7 +368,84 @@ object BuildOrderService : BuildType({
     steps {
         script {
             name = "Build & Push Order Service via Kaniko"
-            scriptContent = kanikoBuildScript("order-service")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="%env.IMAGE_TAG%"
+                REG_USER="%env.REGISTRY_USER%"
+                REG_PASS="%env.REGISTRY_PASSWORD%"
+                SVC="order-service"
+                
+                echo "=== Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작 ==="
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+
+                REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
+                kubectl create secret docker-registry harbor-creds -n teamcity \
+                  --docker-server="${'$'}REG_HOST" \
+                  --docker-username="${'$'}REG_USER" \
+                  --docker-password="${'$'}REG_PASS" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                POD_NAME="kaniko-build-${'$'}SVC-%build.number%"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+                
+                cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${'$'}POD_NAME
+  namespace: teamcity
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    args:
+    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
+    - --context-sub-path=${'$'}SVC
+    - --destination=${'$'}REGISTRY/${'$'}SVC:${'$'}TAG
+    - --destination=${'$'}REGISTRY/${'$'}SVC:latest
+    - --cache=true
+    - --insecure
+    - --skip-tls-verify
+    volumeMounts:
+    - name: creds
+      mountPath: /kaniko/.docker/
+  volumes:
+  - name: creds
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+EOF
+
+                kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
+                kubectl logs -n teamcity "${'$'}POD_NAME" -f
+                
+                while true; do
+                    PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                    if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
+                if [ "${'$'}STATUS" != "Succeeded" ]; then
+                    echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                    kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
+                    exit 1
+                fi
+                echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+            """.trimIndent()
         }
     }
 })
@@ -449,7 +468,84 @@ object BuildFrontend : BuildType({
     steps {
         script {
             name = "Build & Push Frontend via Kaniko"
-            scriptContent = kanikoBuildScript("frontend")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="%env.IMAGE_TAG%"
+                REG_USER="%env.REGISTRY_USER%"
+                REG_PASS="%env.REGISTRY_PASSWORD%"
+                SVC="frontend"
+                
+                echo "=== Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작 ==="
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+
+                REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
+                kubectl create secret docker-registry harbor-creds -n teamcity \
+                  --docker-server="${'$'}REG_HOST" \
+                  --docker-username="${'$'}REG_USER" \
+                  --docker-password="${'$'}REG_PASS" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                POD_NAME="kaniko-build-${'$'}SVC-%build.number%"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+                
+                cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${'$'}POD_NAME
+  namespace: teamcity
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    args:
+    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
+    - --context-sub-path=${'$'}SVC
+    - --destination=${'$'}REGISTRY/${'$'}SVC:${'$'}TAG
+    - --destination=${'$'}REGISTRY/${'$'}SVC:latest
+    - --cache=true
+    - --insecure
+    - --skip-tls-verify
+    volumeMounts:
+    - name: creds
+      mountPath: /kaniko/.docker/
+  volumes:
+  - name: creds
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+EOF
+
+                kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
+                kubectl logs -n teamcity "${'$'}POD_NAME" -f
+                
+                while true; do
+                    PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                    if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
+                if [ "${'$'}STATUS" != "Succeeded" ]; then
+                    echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                    kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
+                    exit 1
+                fi
+                echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+            """.trimIndent()
         }
     }
 })
@@ -472,7 +568,84 @@ object BuildPaymentService : BuildType({
     steps {
         script {
             name = "Build & Push Payment Service via Kaniko"
-            scriptContent = kanikoBuildScript("payment-service")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="%env.IMAGE_TAG%"
+                REG_USER="%env.REGISTRY_USER%"
+                REG_PASS="%env.REGISTRY_PASSWORD%"
+                SVC="payment-service"
+                
+                echo "=== Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작 ==="
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+
+                REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
+                kubectl create secret docker-registry harbor-creds -n teamcity \
+                  --docker-server="${'$'}REG_HOST" \
+                  --docker-username="${'$'}REG_USER" \
+                  --docker-password="${'$'}REG_PASS" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                POD_NAME="kaniko-build-${'$'}SVC-%build.number%"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+                
+                cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${'$'}POD_NAME
+  namespace: teamcity
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    args:
+    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
+    - --context-sub-path=${'$'}SVC
+    - --destination=${'$'}REGISTRY/${'$'}SVC:${'$'}TAG
+    - --destination=${'$'}REGISTRY/${'$'}SVC:latest
+    - --cache=true
+    - --insecure
+    - --skip-tls-verify
+    volumeMounts:
+    - name: creds
+      mountPath: /kaniko/.docker/
+  volumes:
+  - name: creds
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+EOF
+
+                kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
+                kubectl logs -n teamcity "${'$'}POD_NAME" -f
+                
+                while true; do
+                    PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                    if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
+                if [ "${'$'}STATUS" != "Succeeded" ]; then
+                    echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                    kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
+                    exit 1
+                fi
+                echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+            """.trimIndent()
         }
     }
 })
@@ -495,7 +668,84 @@ object BuildNotificationService : BuildType({
     steps {
         script {
             name = "Build & Push Notification Service via Kaniko"
-            scriptContent = kanikoBuildScript("notification-service")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="%env.IMAGE_TAG%"
+                REG_USER="%env.REGISTRY_USER%"
+                REG_PASS="%env.REGISTRY_PASSWORD%"
+                SVC="notification-service"
+                
+                echo "=== Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작 ==="
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+
+                REG_HOST="${'$'}(echo "${'$'}REGISTRY" | cut -d/ -f1)"
+                kubectl create secret docker-registry harbor-creds -n teamcity \
+                  --docker-server="${'$'}REG_HOST" \
+                  --docker-username="${'$'}REG_USER" \
+                  --docker-password="${'$'}REG_PASS" \
+                  --dry-run=client -o yaml | kubectl apply -f -
+
+                POD_NAME="kaniko-build-${'$'}SVC-%build.number%"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+                
+                cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${'$'}POD_NAME
+  namespace: teamcity
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.23.2-debug
+    args:
+    - --context=git://github.com/smjin1210/msa-demo.git#refs/heads/main
+    - --context-sub-path=${'$'}SVC
+    - --destination=${'$'}REGISTRY/${'$'}SVC:${'$'}TAG
+    - --destination=${'$'}REGISTRY/${'$'}SVC:latest
+    - --cache=true
+    - --insecure
+    - --skip-tls-verify
+    volumeMounts:
+    - name: creds
+      mountPath: /kaniko/.docker/
+  volumes:
+  - name: creds
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson
+        path: config.json
+EOF
+
+                kubectl wait --for=condition=Ready pod/"${'$'}POD_NAME" -n teamcity --timeout=60s || true
+                kubectl logs -n teamcity "${'$'}POD_NAME" -f
+                
+                while true; do
+                    PHASE="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+                    if [ "${'$'}PHASE" = "Succeeded" ] || [ "${'$'}PHASE" = "Failed" ]; then
+                        break
+                    fi
+                    sleep 1
+                done
+                
+                STATUS="${'$'}(kubectl get pod "${'$'}POD_NAME" -n teamcity -o jsonpath='{.status.phase}')"
+                if [ "${'$'}STATUS" != "Succeeded" ]; then
+                    echo "ERROR: ${'$'}SVC 빌드 실패 (상태: ${'$'}STATUS)"
+                    kubectl describe pod "${'$'}POD_NAME" -n teamcity || true
+                    exit 1
+                fi
+                echo "${'$'}SVC 이미지 빌드 및 푸시 성공!"
+                kubectl delete pod "${'$'}POD_NAME" -n teamcity --ignore-not-found=true
+            """.trimIndent()
         }
     }
 })
@@ -536,7 +786,44 @@ object DeployProductService : BuildType({
     steps {
         script {
             name = "Deploy Product Service to RKE2 and Rollout Check"
-            scriptContent = deployScript("product-service", "03-product-service.yaml")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                NAMESPACE="%env.K8S_NAMESPACE%"
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="latest"
+                SVC="product-service"
+                YAML_FILE="03-product-service.yaml"
+                
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+                
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    rm -rf /tmp/msa-demo-repo
+                    git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
+                echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
+                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
+                kubectl apply -f k8s/02-postgres.yaml
+                kubectl apply -f k8s/${'$'}YAML_FILE
+
+                echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
+                kubectl set image deployment/${'$'}SVC ${'$'}SVC="${'$'}REGISTRY/${'$'}SVC:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/${'$'}SVC -n "${'$'}NAMESPACE"
+
+                echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
+                kubectl rollout status deployment/${'$'}SVC -n "${'$'}NAMESPACE" --timeout=180s
+
+                echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
+                kubectl get pods -n "${'$'}NAMESPACE" -l app=${'$'}SVC -o wide
+            """.trimIndent()
         }
     }
 })
@@ -574,7 +861,44 @@ object DeployOrderService : BuildType({
     steps {
         script {
             name = "Deploy Order Service to RKE2 and Rollout Check"
-            scriptContent = deployScript("order-service", "04-order-service.yaml")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                NAMESPACE="%env.K8S_NAMESPACE%"
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="latest"
+                SVC="order-service"
+                YAML_FILE="04-order-service.yaml"
+                
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+                
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    rm -rf /tmp/msa-demo-repo
+                    git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
+                echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
+                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
+                kubectl apply -f k8s/02-postgres.yaml
+                kubectl apply -f k8s/${'$'}YAML_FILE
+
+                echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
+                kubectl set image deployment/${'$'}SVC ${'$'}SVC="${'$'}REGISTRY/${'$'}SVC:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/${'$'}SVC -n "${'$'}NAMESPACE"
+
+                echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
+                kubectl rollout status deployment/${'$'}SVC -n "${'$'}NAMESPACE" --timeout=180s
+
+                echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
+                kubectl get pods -n "${'$'}NAMESPACE" -l app=${'$'}SVC -o wide
+            """.trimIndent()
         }
     }
 })
@@ -612,7 +936,44 @@ object DeployFrontend : BuildType({
     steps {
         script {
             name = "Deploy Frontend to RKE2 and Rollout Check"
-            scriptContent = deployScript("frontend", "05-frontend.yaml")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                NAMESPACE="%env.K8S_NAMESPACE%"
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="latest"
+                SVC="frontend"
+                YAML_FILE="05-frontend.yaml"
+                
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+                
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    rm -rf /tmp/msa-demo-repo
+                    git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
+                echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
+                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
+                kubectl apply -f k8s/02-postgres.yaml
+                kubectl apply -f k8s/${'$'}YAML_FILE
+
+                echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
+                kubectl set image deployment/${'$'}SVC ${'$'}SVC="${'$'}REGISTRY/${'$'}SVC:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/${'$'}SVC -n "${'$'}NAMESPACE"
+
+                echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
+                kubectl rollout status deployment/${'$'}SVC -n "${'$'}NAMESPACE" --timeout=180s
+
+                echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
+                kubectl get pods -n "${'$'}NAMESPACE" -l app=${'$'}SVC -o wide
+            """.trimIndent()
         }
     }
 })
@@ -650,7 +1011,44 @@ object DeployPaymentService : BuildType({
     steps {
         script {
             name = "Deploy Payment Service to RKE2 and Rollout Check"
-            scriptContent = deployScript("payment-service", "06-payment-service.yaml")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                NAMESPACE="%env.K8S_NAMESPACE%"
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="latest"
+                SVC="payment-service"
+                YAML_FILE="06-payment-service.yaml"
+                
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+                
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    rm -rf /tmp/msa-demo-repo
+                    git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
+                echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
+                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
+                kubectl apply -f k8s/02-postgres.yaml
+                kubectl apply -f k8s/${'$'}YAML_FILE
+
+                echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
+                kubectl set image deployment/${'$'}SVC ${'$'}SVC="${'$'}REGISTRY/${'$'}SVC:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/${'$'}SVC -n "${'$'}NAMESPACE"
+
+                echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
+                kubectl rollout status deployment/${'$'}SVC -n "${'$'}NAMESPACE" --timeout=180s
+
+                echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
+                kubectl get pods -n "${'$'}NAMESPACE" -l app=${'$'}SVC -o wide
+            """.trimIndent()
         }
     }
 })
@@ -688,7 +1086,44 @@ object DeployNotificationService : BuildType({
     steps {
         script {
             name = "Deploy Notification Service to RKE2 and Rollout Check"
-            scriptContent = deployScript("notification-service", "07-notification-service.yaml")
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                
+                NAMESPACE="%env.K8S_NAMESPACE%"
+                REGISTRY="%env.IMAGE_REGISTRY%"
+                TAG="latest"
+                SVC="notification-service"
+                YAML_FILE="07-notification-service.yaml"
+                
+                if ! command -v kubectl &> /dev/null; then
+                    curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/v1.33.5/bin/linux/amd64/kubectl"
+                    chmod +x /tmp/kubectl
+                    export PATH="/tmp:${'$'}PATH"
+                fi
+                
+                if [ ! -d "k8s" ]; then
+                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                    rm -rf /tmp/msa-demo-repo
+                    git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
+                    cd /tmp/msa-demo-repo
+                fi
+
+                echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
+                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
+                kubectl apply -f k8s/02-postgres.yaml
+                kubectl apply -f k8s/${'$'}YAML_FILE
+
+                echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
+                kubectl set image deployment/${'$'}SVC ${'$'}SVC="${'$'}REGISTRY/${'$'}SVC:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/${'$'}SVC -n "${'$'}NAMESPACE"
+
+                echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
+                kubectl rollout status deployment/${'$'}SVC -n "${'$'}NAMESPACE" --timeout=180s
+
+                echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
+                kubectl get pods -n "${'$'}NAMESPACE" -l app=${'$'}SVC -o wide
+            """.trimIndent()
         }
     }
 })
