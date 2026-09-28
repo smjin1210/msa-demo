@@ -173,6 +173,7 @@ EOF
                     sh '''
                         set -e
                         echo "=== GitOps 매니페스트 이미지 태그 업데이트 및 Git 푸시 ==="
+                        git config --global --add safe.directory '*'
                         git config --global user.name "jenkins-bot"
                         git config --global user.email "jenkins@msa-demo.local"
                         
