@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: order-service
-          image: 43.203.226.163:30002/msa-demo/order-service:jk-6
+          image: 43.203.226.163:30002/msa-demo/order-service:jk-7
           imagePullPolicy: IfNotPresent
           env:
             - name: DATABASE_URL
