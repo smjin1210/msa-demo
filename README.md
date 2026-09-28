@@ -147,18 +147,17 @@ kubectl get all,pvc -n msa-demo
 
 TeamCity에서 **Kubernetes Cloud Profile**을 활용하여 무료 라이선스 기준 최대 3개의 에이전트 환경에서 동작하도록 파이프라인이 설계되었습니다.
 
-### 5.1 파이프라인 단계 구조 (스마트 빌드 재사용 & 5개 서비스 분리)
-1. **Stage 1: 단위 테스트 모듈 분리 (Snapshot Dependencies & Checkout Rules)**
-   - **1-1. Test Product Service** (`TestProductService`): `product-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
-   - **1-2. Test Order Service** (`TestOrderService`): `order-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
-   - **1-3. Test Frontend** (`TestFrontend`): `frontend/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
-   - **1-4. Test Payment Service** (`TestPaymentService`): `payment-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
-   - **1-5. Test Notification Service** (`TestNotificationService`): `notification-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
-2. **Stage 2: Build & Push Images** (`BuildAndPushImages`)
-   - 5개 테스트 완료(또는 재사용) 후 Kaniko 파드를 통해 마이크로서비스 컨테이너 이미지를 빌드하고 Harbor 레지스트리로 푸시
-3. **Stage 3: Deploy & Verify** (`DeployAndVerify`)
-   - `msa-demo` 네임스페이스의 각 디플로이먼트 이미지 롤아웃 수행
-   - `kubectl rollout status` 명령을 통해 180초 동안 Pod Readiness 및 롤아웃 완료를 검증
+### 5.1 파이프라인 단계 구조 (서비스별 완전 독립 파이프라인 & 스마트 재사용)
+1. **0. Deploy All Services (Composite Pipeline)**: 전체 5개 서비스 배포 상태 통합 뷰 및 일괄 트리거 (에이전트 0개 점유)
+2. **Stage 1: 서비스별 단위 테스트 & 번들 검증 (1-1 ~ 1-5)**:
+   - 각 서비스 디렉터리(`product-service/**`, `order-service/**`, `frontend/**`, `payment-service/**`, `notification-service/**`) 변경 감지
+   - 변경 없는 서비스는 이전 성공 결과 즉시 재사용(0초)
+3. **Stage 2: 서비스별 이미지 빌드 & 푸시 (2-1 ~ 2-5)**:
+   - 해당 서비스 변경 시에만 전용 Kaniko 파드를 띄워 Harbor 레지스트리에 푸시
+   - 변경 없는 서비스는 이전 빌드 아티팩트 즉시 재사용(0초)
+4. **Stage 3: 서비스별 쿠버네티스 롤링 배포 & 헬스체크 검증 (3-1 ~ 3-5)**:
+   - 해당 서비스의 Deployment만 롤링 업데이트하고 Readiness Probe를 15~20초 내 검증
+   - 특정 서비스 수정 푸시 시 해당 서비스만 약 40~50초 내에 배포 완주 (전체 빌드 대기 불필요)
 
 ### 5.2 TeamCity Kotlin DSL 설정 파일
 - `.teamcity/settings.kts` (및 `teamcity/settings.kts`)
