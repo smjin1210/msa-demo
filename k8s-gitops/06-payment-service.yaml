@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: payment-service
-          image: 43.203.226.163:30002/msa-demo/payment-service:latest
+          image: 43.203.226.163:30002/msa-demo/payment-service:jk-26
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
