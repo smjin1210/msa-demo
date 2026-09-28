@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: 43.203.226.163:30002/msa-demo/product-service:jk-10
+          image: 43.203.226.163:30002/msa-demo/product-service:jk-11
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
