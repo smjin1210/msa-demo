@@ -229,7 +229,7 @@ EOF
 EOF
                         TOKEN=$(curl -s -X POST "${ARGOCD_SERVER}/api/v1/session" \
                           -H "Content-Type: application/json" \
-                          -d @/tmp/argocd-login.json | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+                          -d @/tmp/argocd-login.json | grep -o '"token":"[^"]*' | cut -d'"' -f4)
                         
                         if [ -n "${TOKEN}" ]; then
                             echo "Argo CD API 호출..."
