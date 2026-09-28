@@ -72,6 +72,34 @@ spec:
                         }
                     }
                 }
+                stage('Payment Service Test') {
+                    steps {
+                        container('python') {
+                            sh '''
+                                echo "=== Payment Service 단위 테스트 실행 ==="
+                                cd payment-service
+                                python3 -m venv .venv
+                                . .venv/bin/activate
+                                pip install --no-cache-dir -r requirements.txt
+                                pytest -v
+                            '''
+                        }
+                    }
+                }
+                stage('Notification Service Test') {
+                    steps {
+                        container('python') {
+                            sh '''
+                                echo "=== Notification Service 단위 테스트 실행 ==="
+                                cd notification-service
+                                python3 -m venv .venv
+                                . .venv/bin/activate
+                                pip install --no-cache-dir -r requirements.txt
+                                pytest -v
+                            '''
+                        }
+                    }
+                }
                 stage('Frontend Test & Build') {
                     steps {
                         container('node') {
@@ -102,7 +130,7 @@ spec:
                           --docker-password="${HARBOR_CREDS_PSW}" \
                           --dry-run=client -o yaml | kubectl apply -f -
                         
-                        for SVC in product-service order-service frontend; do
+                        for SVC in product-service order-service frontend payment-service notification-service; do
                             POD_NAME="kaniko-jk-${SVC}-${BUILD_NUMBER}"
                             echo "--------------------------------------------------"
                             echo "Kaniko Pod 생성: ${POD_NAME} (${SVC})"
@@ -183,6 +211,8 @@ EOF
                         sed -i "s|image: .*/product-service:.*|image: ${HARBOR_REGISTRY}/product-service:${IMAGE_TAG}|g" k8s-gitops/03-product-service.yaml
                         sed -i "s|image: .*/order-service:.*|image: ${HARBOR_REGISTRY}/order-service:${IMAGE_TAG}|g" k8s-gitops/04-order-service.yaml
                         sed -i "s|image: .*/frontend:.*|image: ${HARBOR_REGISTRY}/frontend:${IMAGE_TAG}|g" k8s-gitops/05-frontend.yaml
+                        sed -i "s|image: .*/payment-service:.*|image: ${HARBOR_REGISTRY}/payment-service:${IMAGE_TAG}|g" k8s-gitops/06-payment-service.yaml
+                        sed -i "s|image: .*/notification-service:.*|image: ${HARBOR_REGISTRY}/notification-service:${IMAGE_TAG}|g" k8s-gitops/07-notification-service.yaml
                         
                         git add k8s-gitops/
                         if git diff --staged --quiet; then

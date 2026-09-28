@@ -64,7 +64,43 @@ services:
     networks:
       - msa-network
 
-  # 4. 프론트엔드 웹 UI (React + Vite + Nginx Proxy)
+  # 4. 결제 마이크로서비스 (FastAPI)
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: msa-payment-service
+    restart: unless-stopped
+    ports:
+      - "${PAYMENT_SERVICE_PORT:-8003}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - msa-network
+
+  # 5. 알림 마이크로서비스 (FastAPI)
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: msa-notification-service
+    restart: unless-stopped
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-8004}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - msa-network
+
+  # 6. 프론트엔드 웹 UI (React + Vite + Nginx Proxy)
   frontend:
     build:
       context: ./frontend

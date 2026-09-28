@@ -9,9 +9,11 @@
 파이프라인은 다음 3단계(Stage)로 구성되며 순차적/스냅샷 종속성(Snapshot Dependency)을 가집니다:
 
 ```
-┌─► [1-1. Test Product Service] ──┐
-├─► [1-2. Test Order Service]   ──┼──> [2. Build & Push Images] ──> [3. Deploy & Verify]
-└─► [1-3. Test Frontend]        ──┘
+┌─► [1-1. Test Product Service]      ──┐
+├─► [1-2. Test Order Service]        ──┤
+├─► [1-3. Test Frontend]             ──┼──> [2. Build & Push Images] ──> [3. Deploy & Verify]
+├─► [1-4. Test Payment Service]      ──┤
+└─► [1-5. Test Notification Service] ──┘
     (Checkout Rules 기반 스마트 재사용)
 ```
 
@@ -19,6 +21,8 @@
    - `1-1. Test Product Service` (`TestProductService`): `product-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
    - `1-2. Test Order Service` (`TestOrderService`): `order-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
    - `1-3. Test Frontend` (`TestFrontend`): `frontend/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - `1-4. Test Payment Service` (`TestPaymentService`): `payment-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - `1-5. Test Notification Service` (`TestNotificationService`): `notification-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
 2. **Stage 2: Build & Push Images (컨테이너 이미지 빌드 및 푸시)**
    - **중요**: RKE2 클러스터 노드는 `containerd` 런타임을 사용하므로 `/var/run/docker.sock` 데몬이 없습니다.
    - 따라서 데몬리스(Daemonless) 컨테이너 빌더인 **Google Kaniko**(`gcr.io/kaniko-project/executor`)를 사용하여 빌드 에이전트 파드 내에서 비특권 모드로 안전하게 이미지를 빌드 및 푸시합니다.

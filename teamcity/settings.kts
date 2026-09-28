@@ -23,10 +23,12 @@ project {
     buildType(TestProductService)
     buildType(TestOrderService)
     buildType(TestFrontend)
+    buildType(TestPaymentService)
+    buildType(TestNotificationService)
     buildType(BuildAndPushImages)
     buildType(DeployAndVerify)
 
-    buildTypesOrder = listOf(TestProductService, TestOrderService, TestFrontend, BuildAndPushImages, DeployAndVerify)
+    buildTypesOrder = listOf(TestProductService, TestOrderService, TestFrontend, TestPaymentService, TestNotificationService, BuildAndPushImages, DeployAndVerify)
 }
 
 object TestProductService : BuildType({
@@ -164,6 +166,88 @@ object TestFrontend : BuildType({
     }
 })
 
+object TestPaymentService : BuildType({
+    id("TestPaymentService")
+    name = "1-4. Test Payment Service"
+    description = "Payment Service (FastAPI) 단위 테스트"
+
+    vcs {
+        root(DslContext.settingsRoot, "+:payment-service")
+    }
+
+    triggers {
+        vcs {
+            branchFilter = "+:refs/heads/main"
+            triggerRules = """
+                +:payment-service/**
+                -:.teamcity/**
+                -:k8s-gitops/**
+                -:argocd/**
+                -:README.md
+            """.trimIndent()
+        }
+    }
+
+    steps {
+        script {
+            name = "Test Payment Service (FastAPI)"
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                echo "=== Payment Service 가상환경 구성 및 테스트 실행 ==="
+                if [ -d "payment-service" ]; then
+                    cd payment-service
+                fi
+                python3 -m venv .venv
+                source .venv/bin/activate
+                pip install -r requirements.txt
+                pytest -v
+            """.trimIndent()
+        }
+    }
+})
+
+object TestNotificationService : BuildType({
+    id("TestNotificationService")
+    name = "1-5. Test Notification Service"
+    description = "Notification Service (FastAPI) 단위 테스트"
+
+    vcs {
+        root(DslContext.settingsRoot, "+:notification-service")
+    }
+
+    triggers {
+        vcs {
+            branchFilter = "+:refs/heads/main"
+            triggerRules = """
+                +:notification-service/**
+                -:.teamcity/**
+                -:k8s-gitops/**
+                -:argocd/**
+                -:README.md
+            """.trimIndent()
+        }
+    }
+
+    steps {
+        script {
+            name = "Test Notification Service (FastAPI)"
+            scriptContent = """
+                #!/bin/bash
+                set -e
+                echo "=== Notification Service 가상환경 구성 및 테스트 실행 ==="
+                if [ -d "notification-service" ]; then
+                    cd notification-service
+                fi
+                python3 -m venv .venv
+                source .venv/bin/activate
+                pip install -r requirements.txt
+                pytest -v
+            """.trimIndent()
+        }
+    }
+})
+
 object BuildAndPushImages : BuildType({
     id("BuildAndPushImages")
     name = "2. Build & Push Container Images (Kaniko)"
@@ -177,6 +261,12 @@ object BuildAndPushImages : BuildType({
             onDependencyFailure = FailureAction.FAIL_TO_START
         }
         snapshot(TestFrontend) {
+            onDependencyFailure = FailureAction.FAIL_TO_START
+        }
+        snapshot(TestPaymentService) {
+            onDependencyFailure = FailureAction.FAIL_TO_START
+        }
+        snapshot(TestNotificationService) {
             onDependencyFailure = FailureAction.FAIL_TO_START
         }
     }
@@ -215,7 +305,7 @@ object BuildAndPushImages : BuildType({
                   --dry-run=client -o yaml | kubectl apply -f -
 
                 # 3. 마이크로서비스별 Kaniko 파드 빌드 실행
-                for SVC in product-service order-service frontend; do
+                for SVC in product-service order-service frontend payment-service notification-service; do
                     echo "=================================================="
                     echo "Kaniko Pod를 통한 ${'$'}SVC 컨테이너 빌드 및 푸시 시작"
                     echo "=================================================="
@@ -331,17 +421,23 @@ object DeployAndVerify : BuildType({
                 kubectl apply -f k8s/03-product-service.yaml
                 kubectl apply -f k8s/04-order-service.yaml
                 kubectl apply -f k8s/05-frontend.yaml
+                kubectl apply -f k8s/06-payment-service.yaml
+                kubectl apply -f k8s/07-notification-service.yaml
 
                 echo "=== 2. 신규 이미지 롤아웃 트리거 ==="
                 kubectl set image deployment/product-service product-service="${'$'}REGISTRY/product-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
                 kubectl set image deployment/order-service order-service="${'$'}REGISTRY/order-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
                 kubectl set image deployment/frontend frontend="${'$'}REGISTRY/frontend:${'$'}TAG" -n "${'$'}NAMESPACE" || true
-                kubectl rollout restart deployment/product-service deployment/order-service deployment/frontend -n "${'$'}NAMESPACE"
+                kubectl set image deployment/payment-service payment-service="${'$'}REGISTRY/payment-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl set image deployment/notification-service notification-service="${'$'}REGISTRY/notification-service:${'$'}TAG" -n "${'$'}NAMESPACE" || true
+                kubectl rollout restart deployment/product-service deployment/order-service deployment/frontend deployment/payment-service deployment/notification-service -n "${'$'}NAMESPACE"
 
                 echo "=== 3. 롤아웃 상태 검증 (Timeout: 180초) ==="
                 kubectl rollout status deployment/product-service -n "${'$'}NAMESPACE" --timeout=180s
                 kubectl rollout status deployment/order-service -n "${'$'}NAMESPACE" --timeout=180s
                 kubectl rollout status deployment/frontend -n "${'$'}NAMESPACE" --timeout=180s
+                kubectl rollout status deployment/payment-service -n "${'$'}NAMESPACE" --timeout=180s
+                kubectl rollout status deployment/notification-service -n "${'$'}NAMESPACE" --timeout=180s
 
                 echo "=== 4. 배포 파드 및 엔드포인트 헬스체크 확인 ==="
                 kubectl get pods -n "${'$'}NAMESPACE" -o wide

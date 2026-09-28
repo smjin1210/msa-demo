@@ -147,13 +147,15 @@ kubectl get all,pvc -n msa-demo
 
 TeamCity에서 **Kubernetes Cloud Profile**을 활용하여 무료 라이선스 기준 최대 3개의 에이전트 환경에서 동작하도록 파이프라인이 설계되었습니다.
 
-### 5.1 파이프라인 단계 구조 (스마트 빌드 재사용 & 서비스별 분리)
+### 5.1 파이프라인 단계 구조 (스마트 빌드 재사용 & 5개 서비스 분리)
 1. **Stage 1: 단위 테스트 모듈 분리 (Snapshot Dependencies & Checkout Rules)**
    - **1-1. Test Product Service** (`TestProductService`): `product-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
    - **1-2. Test Order Service** (`TestOrderService`): `order-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
    - **1-3. Test Frontend** (`TestFrontend`): `frontend/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - **1-4. Test Payment Service** (`TestPaymentService`): `payment-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - **1-5. Test Notification Service** (`TestNotificationService`): `notification-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
 2. **Stage 2: Build & Push Images** (`BuildAndPushImages`)
-   - 3개 테스트 완료(또는 재사용) 후 Kaniko 파드를 통해 마이크로서비스 컨테이너 이미지를 빌드하고 Harbor 레지스트리로 푸시
+   - 5개 테스트 완료(또는 재사용) 후 Kaniko 파드를 통해 마이크로서비스 컨테이너 이미지를 빌드하고 Harbor 레지스트리로 푸시
 3. **Stage 3: Deploy & Verify** (`DeployAndVerify`)
    - `msa-demo` 네임스페이스의 각 디플로이먼트 이미지 롤아웃 수행
    - `kubectl rollout status` 명령을 통해 180초 동안 Pod Readiness 및 롤아웃 완료를 검증
@@ -200,10 +202,10 @@ TeamCity의 Push 기반 CD와 비교 분석을 위한 **Jenkins(CI) + Argo CD(Gi
 
 ### 7.2 파이프라인 동작 흐름 (`Jenkinsfile`)
 1. **Unit Tests (병렬 실행)**:
-   - Python 3.12 컨테이너: Product Service 및 Order Service 단위 테스트 (`pytest`)
-   - Node.js 20 컨테이너: Frontend 테스트 (`vitest`) 및 번들 빌드 (`npm run build`)
+   - Python 3.12 컨테이너: Product, Order, Payment, Notification 4개 서비스 단위 테스트 (`pytest`) 병렬 실행
+   - Node.js 20 컨테이너: Frontend 테스트 (`vitest`) 및 번들 빌드 (`npm run build`) 병렬 실행
 2. **Build & Push Images**:
-   - Kaniko 파드를 통해 3개 마이크로서비스 컨테이너 이미지를 빌드하여 로컬 Harbor에 푸시 (`jk-${BUILD_NUMBER}`)
+   - Kaniko 파드를 통해 5개 마이크로서비스 컨테이너 이미지를 빌드하여 로컬 Harbor에 푸시 (`jk-${BUILD_NUMBER}`)
 3. **Update GitOps & Sync Argo CD**:
    - `k8s-gitops/` 내 매니페스트의 이미지 태그를 갱신하여 GitHub `main`에 커밋/푸시
    - Argo CD REST API를 호출하여 즉시 동기화(Sync) 트리거 수행
@@ -215,7 +217,7 @@ TeamCity의 Push 기반 CD와 비교 분석을 위한 **Jenkins(CI) + Argo CD(Gi
 ```
 msa-demo/
 ├── .env.example               # 로컬 실행용 환경 변수 예시
-├── docker-compose.yml         # 로컬 올인원 실행용 Docker Compose 설정
+├── docker-compose.yml         # 로컬 올인원 실행용 Docker Compose 설정 (5개 서비스)
 ├── Jenkinsfile                # Jenkins CI 파이프라인 선언
 ├── README.md                  # 프로젝트 종합 가이드 (본 문서)
 ├── argocd/                    # Argo CD Application 선언
@@ -223,6 +225,8 @@ msa-demo/
 ├── frontend/                  # React + TypeScript + Vite + Nginx 프론트엔드
 ├── product-service/           # FastAPI 상품 마이크로서비스
 ├── order-service/             # FastAPI + PostgreSQL 주문 마이크로서비스
+├── payment-service/           # FastAPI 결제 마이크로서비스
+├── notification-service/      # FastAPI 알림 마이크로서비스
 ├── k8s/                       # TeamCity 배포용 쿠버네티스 매니페스트 (msa-demo)
 ├── k8s-gitops/                # Argo CD GitOps용 매니페스트 (msa-demo-gitops, NodePort: 30081)
 └── teamcity/                  # TeamCity CI/CD 설정 및 Kotlin DSL
