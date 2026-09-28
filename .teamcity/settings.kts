@@ -802,16 +802,15 @@ object DeployProductService : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
-                if [ ! -d "k8s" ]; then
-                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                if [ ! -f "k8s/${'$'}YAML_FILE" ]; then
+                    echo "k8s/${'$'}YAML_FILE 매니페스트가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
                     rm -rf /tmp/msa-demo-repo
                     git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
                     cd /tmp/msa-demo-repo
                 fi
 
                 echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
-                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-                kubectl apply -f k8s/02-postgres.yaml
+                kubectl get namespace "${'$'}NAMESPACE" 2>/dev/null || kubectl create namespace "${'$'}NAMESPACE"
                 kubectl apply -f k8s/${'$'}YAML_FILE
 
                 echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
@@ -877,16 +876,18 @@ object DeployOrderService : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
-                if [ ! -d "k8s" ]; then
-                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                if [ ! -f "k8s/${'$'}YAML_FILE" ]; then
+                    echo "k8s/${'$'}YAML_FILE 매니페스트가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
                     rm -rf /tmp/msa-demo-repo
                     git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
                     cd /tmp/msa-demo-repo
                 fi
 
                 echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
-                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-                kubectl apply -f k8s/02-postgres.yaml
+                kubectl get namespace "${'$'}NAMESPACE" 2>/dev/null || kubectl create namespace "${'$'}NAMESPACE"
+                if [ -f "k8s/02-postgres.yaml" ]; then
+                    kubectl apply -f k8s/02-postgres.yaml
+                fi
                 kubectl apply -f k8s/${'$'}YAML_FILE
 
                 echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
@@ -952,16 +953,15 @@ object DeployFrontend : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
-                if [ ! -d "k8s" ]; then
-                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                if [ ! -f "k8s/${'$'}YAML_FILE" ]; then
+                    echo "k8s/${'$'}YAML_FILE 매니페스트가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
                     rm -rf /tmp/msa-demo-repo
                     git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
                     cd /tmp/msa-demo-repo
                 fi
 
                 echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
-                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-                kubectl apply -f k8s/02-postgres.yaml
+                kubectl get namespace "${'$'}NAMESPACE" 2>/dev/null || kubectl create namespace "${'$'}NAMESPACE"
                 kubectl apply -f k8s/${'$'}YAML_FILE
 
                 echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
@@ -1027,16 +1027,15 @@ object DeployPaymentService : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
-                if [ ! -d "k8s" ]; then
-                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                if [ ! -f "k8s/${'$'}YAML_FILE" ]; then
+                    echo "k8s/${'$'}YAML_FILE 매니페스트가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
                     rm -rf /tmp/msa-demo-repo
                     git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
                     cd /tmp/msa-demo-repo
                 fi
 
                 echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
-                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-                kubectl apply -f k8s/02-postgres.yaml
+                kubectl get namespace "${'$'}NAMESPACE" 2>/dev/null || kubectl create namespace "${'$'}NAMESPACE"
                 kubectl apply -f k8s/${'$'}YAML_FILE
 
                 echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
@@ -1102,16 +1101,15 @@ object DeployNotificationService : BuildType({
                     export PATH="/tmp:${'$'}PATH"
                 fi
                 
-                if [ ! -d "k8s" ]; then
-                    echo "k8s 디렉터리가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
+                if [ ! -f "k8s/${'$'}YAML_FILE" ]; then
+                    echo "k8s/${'$'}YAML_FILE 매니페스트가 없어 GitHub 저장소에서 최신 코드를 다운로드합니다..."
                     rm -rf /tmp/msa-demo-repo
                     git clone --depth 1 https://github.com/smjin1210/msa-demo.git /tmp/msa-demo-repo
                     cd /tmp/msa-demo-repo
                 fi
 
                 echo "=== 1. 네임스페이스 및 ${'$'}SVC 리소스 배포 ==="
-                kubectl get namespace "${'$'}NAMESPACE" || kubectl apply -f k8s/00-namespace.yaml
-                kubectl apply -f k8s/02-postgres.yaml
+                kubectl get namespace "${'$'}NAMESPACE" 2>/dev/null || kubectl create namespace "${'$'}NAMESPACE"
                 kubectl apply -f k8s/${'$'}YAML_FILE
 
                 echo "=== 2. ${'$'}SVC 신규 이미지 롤아웃 트리거 ==="
