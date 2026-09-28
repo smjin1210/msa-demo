@@ -194,9 +194,12 @@ EOF
                         fi
                         
                         echo "=== Argo CD 즉시 동기화(Sync) 요청 ==="
+                        cat <<EOF > /tmp/argocd-login.json
+{"username":"${ARGOCD_USER}","password":"${ARGOCD_PASS}"}
+EOF
                         TOKEN=$(curl -s -X POST "${ARGOCD_SERVER}/api/v1/session" \
                           -H "Content-Type: application/json" \
-                          -d "{\"username\":\"${ARGOCD_USER}\",\"password\":\"${ARGOCD_PASS}\"}" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                          -d @/tmp/argocd-login.json | grep -o '"token":"[^"]*' | cut -d'"' -f4)
                         
                         if [ -n "${TOKEN}" ]; then
                             echo "Argo CD API 호출..."
