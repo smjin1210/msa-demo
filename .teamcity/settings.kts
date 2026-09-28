@@ -396,10 +396,7 @@ object DeployAndVerify : BuildType({
                 
                 NAMESPACE="%env.K8S_NAMESPACE%"
                 REGISTRY="%env.IMAGE_REGISTRY%"
-                TAG="%env.IMAGE_TAG%"
-                if [ -z "${'$'}TAG" ]; then
-                    TAG="latest"
-                fi
+                TAG="latest"
                 
                 # 1. kubectl 환경 확인
                 if ! command -v kubectl &> /dev/null; then
