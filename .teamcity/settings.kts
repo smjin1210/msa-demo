@@ -39,6 +39,12 @@ object RunUnitTests : BuildType({
     triggers {
         vcs {
             branchFilter = "+:refs/heads/main"
+            triggerRules = """
+                -:.teamcity/**
+                -:k8s-gitops/**
+                -:argocd/**
+                -:README.md
+            """.trimIndent()
         }
     }
 

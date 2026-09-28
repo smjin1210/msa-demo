@@ -29,7 +29,7 @@ spec:
         }
     }
     triggers {
-        pollSCM('H/2 * * * *')
+        pollSCM('H/5 * * * *')
     }
     environment {
         HARBOR_REGISTRY = '43.203.226.163:30002/msa-demo'
@@ -199,7 +199,7 @@ EOF
 EOF
                         TOKEN=$(curl -s -X POST "${ARGOCD_SERVER}/api/v1/session" \
                           -H "Content-Type: application/json" \
-                          -d @/tmp/argocd-login.json | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+                          -d @/tmp/argocd-login.json | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
                         
                         if [ -n "${TOKEN}" ]; then
                             echo "Argo CD API 호출..."
