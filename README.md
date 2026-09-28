@@ -147,12 +147,14 @@ kubectl get all,pvc -n msa-demo
 
 TeamCity에서 **Kubernetes Cloud Profile**을 활용하여 무료 라이선스 기준 최대 3개의 에이전트 환경에서 동작하도록 파이프라인이 설계되었습니다.
 
-### 5.1 파이프라인 단계 구조
-1. **Stage 1: Run Tests** (`K8sTest_RunUnitTests`)
-   - 프론트엔드 및 백엔드 서비스의 단위 테스트와 빌드 검증을 병렬/순차 수행
-2. **Stage 2: Build & Push Images** (`K8sTest_BuildAndPushImages`)
-   - **containerd 런타임 빌드 대응**: RKE2 워커 노드에는 docker daemon이 없으므로, Kubernetes 에이전트 파드 내에서 **Google Kaniko**(`/kaniko/executor`)를 사용하여 데몬리스로 컨테이너 이미지를 빌드하고 원격 레지스트리로 푸시합니다.
-3. **Stage 3: Deploy & Verify** (`K8sTest_DeployAndVerify`)
+### 5.1 파이프라인 단계 구조 (스마트 빌드 재사용 & 서비스별 분리)
+1. **Stage 1: 단위 테스트 모듈 분리 (Snapshot Dependencies & Checkout Rules)**
+   - **1-1. Test Product Service** (`TestProductService`): `product-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - **1-2. Test Order Service** (`TestOrderService`): `order-service/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+   - **1-3. Test Frontend** (`TestFrontend`): `frontend/**` 변경 시 실행, 변경 없으면 이전 성공 빌드 즉시 재사용(0초)
+2. **Stage 2: Build & Push Images** (`BuildAndPushImages`)
+   - 3개 테스트 완료(또는 재사용) 후 Kaniko 파드를 통해 마이크로서비스 컨테이너 이미지를 빌드하고 Harbor 레지스트리로 푸시
+3. **Stage 3: Deploy & Verify** (`DeployAndVerify`)
    - `msa-demo` 네임스페이스의 각 디플로이먼트 이미지 롤아웃 수행
    - `kubectl rollout status` 명령을 통해 180초 동안 Pod Readiness 및 롤아웃 완료를 검증
 

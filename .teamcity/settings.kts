@@ -13,33 +13,36 @@ project {
     description = "MSA 주문 시스템 CI/CD 파이프라인 (RKE2 + Kubernetes Cloud Profile)"
 
     params {
-        param("env.IMAGE_REGISTRY", "13.124.192.6:30002/msa-demo")
+        param("env.IMAGE_REGISTRY", "43.203.226.163:30002/msa-demo")
         param("env.IMAGE_TAG", "%build.number%")
         param("env.K8S_NAMESPACE", "msa-demo")
         password("env.REGISTRY_PASSWORD", "tangun123!", display = ParameterDisplay.HIDDEN, label = "Container Registry Password")
         param("env.REGISTRY_USER", "admin")
     }
 
-    buildType(RunUnitTests)
+    buildType(TestProductService)
+    buildType(TestOrderService)
+    buildType(TestFrontend)
     buildType(BuildAndPushImages)
     buildType(DeployAndVerify)
 
-    buildTypesOrder = listOf(RunUnitTests, BuildAndPushImages, DeployAndVerify)
+    buildTypesOrder = listOf(TestProductService, TestOrderService, TestFrontend, BuildAndPushImages, DeployAndVerify)
 }
 
-object RunUnitTests : BuildType({
-    id("RunUnitTests")
-    name = "1. Run Tests (Frontend & Services)"
-    description = "각 마이크로서비스 단위 테스트 및 프론트엔드 빌드 검증"
+object TestProductService : BuildType({
+    id("TestProductService")
+    name = "1-1. Test Product Service"
+    description = "Product Service (FastAPI) 단위 테스트"
 
     vcs {
-        root(DslContext.settingsRoot)
+        root(DslContext.settingsRoot, "+:product-service/**")
     }
 
     triggers {
         vcs {
             branchFilter = "+:refs/heads/main"
             triggerRules = """
+                +:product-service/**
                 -:.teamcity/**
                 -:k8s-gitops/**
                 -:argocd/**
@@ -55,28 +58,82 @@ object RunUnitTests : BuildType({
                 #!/bin/bash
                 set -e
                 echo "=== Product Service 가상환경 구성 및 테스트 실행 ==="
-                cd product-service
+                if [ -d "product-service" ]; then
+                    cd product-service
+                fi
                 python3 -m venv .venv
                 source .venv/bin/activate
                 pip install -r requirements.txt
                 pytest -v
             """.trimIndent()
         }
+    }
+})
 
+object TestOrderService : BuildType({
+    id("TestOrderService")
+    name = "1-2. Test Order Service"
+    description = "Order Service (FastAPI + SQLite Test DB) 단위 테스트"
+
+    vcs {
+        root(DslContext.settingsRoot, "+:order-service/**")
+    }
+
+    triggers {
+        vcs {
+            branchFilter = "+:refs/heads/main"
+            triggerRules = """
+                +:order-service/**
+                -:.teamcity/**
+                -:k8s-gitops/**
+                -:argocd/**
+                -:README.md
+            """.trimIndent()
+        }
+    }
+
+    steps {
         script {
             name = "Test Order Service (FastAPI + SQLite Test DB)"
             scriptContent = """
                 #!/bin/bash
                 set -e
                 echo "=== Order Service 가상환경 구성 및 테스트 실행 ==="
-                cd order-service
+                if [ -d "order-service" ]; then
+                    cd order-service
+                fi
                 python3 -m venv .venv
                 source .venv/bin/activate
                 pip install -r requirements.txt
                 pytest -v
             """.trimIndent()
         }
+    }
+})
 
+object TestFrontend : BuildType({
+    id("TestFrontend")
+    name = "1-3. Test Frontend"
+    description = "Frontend (React + Vite) 단위 테스트 및 프로덕션 번들 검증"
+
+    vcs {
+        root(DslContext.settingsRoot, "+:frontend/**")
+    }
+
+    triggers {
+        vcs {
+            branchFilter = "+:refs/heads/main"
+            triggerRules = """
+                +:frontend/**
+                -:.teamcity/**
+                -:k8s-gitops/**
+                -:argocd/**
+                -:README.md
+            """.trimIndent()
+        }
+    }
+
+    steps {
         script {
             name = "Test & Build Frontend (React + Vite)"
             scriptContent = """
@@ -96,7 +153,9 @@ object RunUnitTests : BuildType({
                 echo "NPM version: ${'$'}(npm -v)"
 
                 echo "=== Frontend 테스트 및 프로덕션 빌드 검증 ==="
-                cd frontend
+                if [ -d "frontend" ]; then
+                    cd frontend
+                fi
                 npm ci || npm install
                 npm test
                 npm run build
@@ -111,7 +170,13 @@ object BuildAndPushImages : BuildType({
     description = "containerd 노드 환경에서 Kaniko를 이용한 비특권 도커 이미지 빌드 및 원격 레지스트리 푸시"
 
     dependencies {
-        snapshot(RunUnitTests) {
+        snapshot(TestProductService) {
+            onDependencyFailure = FailureAction.FAIL_TO_START
+        }
+        snapshot(TestOrderService) {
+            onDependencyFailure = FailureAction.FAIL_TO_START
+        }
+        snapshot(TestFrontend) {
             onDependencyFailure = FailureAction.FAIL_TO_START
         }
     }
