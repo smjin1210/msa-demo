@@ -185,37 +185,43 @@ kubectl create secret docker-registry regcred \
 
 ---
 
-## 7. 디렉터리 구조 요약
+## 7. Jenkins + Argo CD GitOps 파이프라인 (Namespace: msa-demo-gitops)
+
+TeamCity의 Push 기반 CD와 비교 분석을 위한 **Jenkins(CI) + Argo CD(GitOps CD)** 파이프라인 구성입니다.
+
+### 7.1 격리 배포 아키텍처
+- **네임스페이스**: `msa-demo-gitops` (TeamCity `msa-demo`와 완전 격리)
+- **프론트엔드 NodePort**: `30081` (`http://43.203.226.163:30081`)
+- **이미지 태그 규칙**: `jk-${BUILD_NUMBER}`
+- **GitOps 매니페스트**: `k8s-gitops/`
+- **Argo CD Application**: `msa-demo-gitops` (`argocd/application.yaml`)
+
+### 7.2 파이프라인 동작 흐름 (`Jenkinsfile`)
+1. **Unit Tests (병렬 실행)**:
+   - Python 3.12 컨테이너: Product Service 및 Order Service 단위 테스트 (`pytest`)
+   - Node.js 20 컨테이너: Frontend 테스트 (`vitest`) 및 번들 빌드 (`npm run build`)
+2. **Build & Push Images**:
+   - Kaniko 파드를 통해 3개 마이크로서비스 컨테이너 이미지를 빌드하여 로컬 Harbor에 푸시 (`jk-${BUILD_NUMBER}`)
+3. **Update GitOps & Sync Argo CD**:
+   - `k8s-gitops/` 내 매니페스트의 이미지 태그를 갱신하여 GitHub `main`에 커밋/푸시
+   - Argo CD REST API를 호출하여 즉시 동기화(Sync) 트리거 수행
+
+---
+
+## 8. 디렉터리 구조 요약
 
 ```
 msa-demo/
 ├── .env.example               # 로컬 실행용 환경 변수 예시
 ├── docker-compose.yml         # 로컬 올인원 실행용 Docker Compose 설정
+├── Jenkinsfile                # Jenkins CI 파이프라인 선언
 ├── README.md                  # 프로젝트 종합 가이드 (본 문서)
+├── argocd/                    # Argo CD Application 선언
+│   └── application.yaml
 ├── frontend/                  # React + TypeScript + Vite + Nginx 프론트엔드
-│   ├── Dockerfile             # Multi-stage 빌드 Dockerfile
-│   ├── nginx.conf             # Nginx 리버스 프록시 및 SPA 설정
-│   ├── package.json
-│   ├── src/
-│   └── tests/
 ├── product-service/           # FastAPI 상품 마이크로서비스
-│   ├── Dockerfile
-│   ├── requirements.txt       # 고정 버전 의존성
-│   ├── app/
-│   └── tests/
 ├── order-service/             # FastAPI + PostgreSQL 주문 마이크로서비스
-│   ├── Dockerfile
-│   ├── requirements.txt       # 고정 버전 의존성
-│   ├── app/
-│   └── tests/
-├── k8s/                       # 쿠버네티스(RKE2) 배포 매니페스트
-│   ├── 00-namespace.yaml      # 네임스페이스 (msa-demo)
-│   ├── 01-secrets-template.yaml # 시크릿 템플릿
-│   ├── 02-postgres.yaml       # PostgreSQL Deployment + PVC (local-path)
-│   ├── 03-product-service.yaml# 상품 서비스 Deployment + Service
-│   ├── 04-order-service.yaml  # 주문 서비스 Deployment + Service
-│   └── 05-frontend.yaml       # 프론트엔드 Deployment + NodePort Service + Ingress
+├── k8s/                       # TeamCity 배포용 쿠버네티스 매니페스트 (msa-demo)
+├── k8s-gitops/                # Argo CD GitOps용 매니페스트 (msa-demo-gitops, NodePort: 30081)
 └── teamcity/                  # TeamCity CI/CD 설정 및 Kotlin DSL
-    ├── README.md              # TeamCity 파이프라인 상세 가이드
-    └── settings.kts           # TeamCity Kotlin DSL 빌드 체인 정의
 ```

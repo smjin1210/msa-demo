@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: msa-demo-gitops
+  labels:
+    app.kubernetes.io/name: msa-demo-gitops
+    app.kubernetes.io/part-of: msa-order-system

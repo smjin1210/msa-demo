@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: msa-demo-gitops
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: msa-demo-gitops
+    app.kubernetes.io/part-of: msa-order-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/smjin1210/msa-demo.git
+    targetRevision: main
+    path: k8s-gitops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: msa-demo-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
