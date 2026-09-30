@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: notification-service
-          image: 43.203.226.163:30002/msa-demo/notification-service:jk-30
+          image: 43.201.53.221:30002/msa-demo/notification-service:jk-32
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
