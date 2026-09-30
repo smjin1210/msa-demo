@@ -32,8 +32,8 @@ spec:
         pollSCM('H/5 * * * *')
     }
     environment {
-        HARBOR_REGISTRY = '43.203.226.163:30002/msa-demo'
-        HARBOR_HOST = '43.203.226.163:30002'
+        HARBOR_REGISTRY = '43.201.53.221:30002/msa-demo'
+        HARBOR_HOST = '43.201.53.221:30002'
         HARBOR_CREDS = credentials('harbor-credentials')
         GITHUB_CREDS = credentials('github-credentials')
         ARGOCD_SERVER = 'http://argocd-server.argocd.svc'
