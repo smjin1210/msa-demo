@@ -93,7 +93,7 @@ export const App: React.FC = () => {
             <span className="logo-icon">🚀</span>
             <div>
               <h1 className="logo-title">MSA 주문 시스템</h1>
-              <span className="logo-badge">TeamCity CI/CD 데모</span>
+              <span className="logo-badge">TeamCity CI/CD 데모 v2.0</span>
             </div>
           </div>
 
